@@ -1,2 +1,77 @@
 # Part1:
-1. It shows the name of the program and it's pid, then sleeps for 30 seconds.
+1.
+It shows the name of the program and it's pid, then sleeps for 30 seconds.
+2.
+the final print statement will execute if given an invalid program as a parameter
+
+# Part 2:
+3.
+coins@Thicket:~/CS324/hw3$ ./exec /bin/cat
+Program "./exec" has pid 255. Sleeping.
+Running exec of "/bin/cat"
+4.
+coins@Thicket:~/CS324/hw3$ ps -p 255 -o "user pid ppid state ucmd"
+USER       PID  PPID S CMD
+coins      255   215 S exec
+coins@Thicket:~/CS324/hw3$ ps -p 255 -o "user pid ppid state ucmd"
+USER       PID  PPID S CMD
+coins      255   215 S cat
+5.
+They are the same with one exception.  the command name has changed, because execve launched a new command gave the first programs pid to it.
+6.
+coins@Thicket:~/CS324/hw3$ ./exec fakeProgram
+Program "./exec" has pid 259. Sleeping.
+Running exec of "fakeProgram"
+End of program "./exec".
+
+# Part 3:
+7.
+Prints process ID, creates a fork, then parent/child have their own branches to execute, with a shared section again at the end.
+8.
+Both run section A
+Child runs section B
+Parent runs section C
+Both run section D
+
+# Part 4:
+9.
+coins@Thicket:~/CS324/hw3$ ./fork
+Starting program; process has pid 293
+Section A;  pid 293
+Section A;  pid 294
+Section C
+Section B
+Section B done sleeping
+Section C done sleeping
+coins@Thicket:~/CS324/hw3$ ps -C fork -o "user pid ppid state ucmd" --forest
+USER       PID  PPID S CMD
+coins      293   215 S fork
+coins      294   293 S  \_ fork
+coins@Thicket:~/CS324/hw3$ ps -C fork -o "user pid ppid state ucmd" --forest
+USER       PID  PPID S CMD
+coins      293   215 S fork
+coins      294   293 Z  \_ fork <defunct>
+10.
+they are the same, except the child is a zombie because it ends before the parent
+11.
+wait(NULL);
+It feels most efficient to put it between the two sleep calls in section C, but it could go mostly anywhere.
+12.
+Starting program; process has pid 11055
+Section A;  pid 11055
+Section A;  pid 11056
+Section B
+Section C
+Section C done sleeping
+coins@Thicket:~/CS324/hw3$ ps -C fork -o "user pid ppid state ucmd" --forest
+USER       PID  PPID S CMD
+coins    11055   215 S fork
+coins    11056 11055 S  \_ fork
+coins@Thicket:~/CS324/hw3$ ps -C fork -o "user pid ppid state ucmd" --forest
+USER       PID  PPID S CMD
+coins    11056     1 S fork
+13.
+The parent process ended and made the child process an orphan.  The child got a new ppid as a result.
+
+# Part 5:
+14.
