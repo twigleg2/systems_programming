@@ -1,0 +1,2 @@
+# Part1:
+1. It shows the name of the program and it's pid, then sleeps for 30 seconds.
