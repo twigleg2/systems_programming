@@ -1,0 +1,42 @@
+bandit0@imaal:~$ env BANDIT_LEVEL=1 ./level1 
+6/Q2LbNWe5a4KTk8ymUVrKuQ2J8B+/2+
+
+bandit1@imaal:~$ ./level2 2> /dev/null
+4utUC/pa/7fK5zU0Q3qPKPbmicmozKSc
+
+bandit2@imaal:~$ cat level3.txt | grep ^eget | awk '{print $2}'
+WvmlqTFW+sn+TgJD9nEifb2cFNaDYaL3
+
+bandit3@imaal:~$ sort level4.txt | base64 -d | tail -n 1
+eAyRe5KDtiqxDoeqVCABnj6hBMhCR/Bd
+
+bandit4@imaal:~$ dig bandit.cs324.internet-measurement.cs.byu.edu TXT +short | md5sum | cut -b -32
+d9addec2125e48f5a24be719eb35f275
+
+bandit5@imaal:~$ tar -xOzf level6.tar.gz  | tr F L
+Jp1NL6O/H7uPUesDQ7r1TPLH2oGlTyHn
+
+bandit6@imaal:~$ curl https://imaal.byu.edu/cs324/bandit.txt | sha1sum | cut -b -32
+fb7cf39e8e0becdcd0468863cdc653e6
+
+bandit7@imaal:~$ ./level8 & sleep 1; kill -STOP %1; sleep 6; kill -CONT %1;
+[1] 15006
+Countdown!
+10!
+
+[1]+  Stopped                 ./level8
+bandit7@imaal:~$ 9!
+8!
+7!
+6!
+5!
+4!
+3!
+2!
+1!
+Uoux218Rtfi8Eg1UmIfZ9m4NErlTW+d9
+
+bandit8@imaal:~$ sort level9.txt | uniq -c | sort | tail -n 1 | awk '{print }'
+WWvs5PXxiY81gLjw60+mBccj6bGACwdU
+
+ I did the tmux excersice, and it was awesome. ~gfinch

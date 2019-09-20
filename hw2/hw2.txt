@@ -1,0 +1,22 @@
+1. which strings have the same size and content as s1?
+s2
+a1 a2 a3 a4
+
+2. which pointer values are the same?
+s1 and e1
+
+3. which of the following can be considered strings?
+all of them, because that are character arrays.
+
+4. which can be used as arguments to memcpy and memcmp?
+all of them
+
+5. which strings are determined to be equal by strcmp?
+s1,s2
+s1,a1
+c1,c2
+s1,d1
+s1,e1
+
+s1 and b1 are not equivalent because s1 has an explicit null character.  
+b1 does not, so it may or may not be equivalent, depending on what heppens to be in memory next.
