@@ -31,7 +31,7 @@ Prints process ID, creates a fork, then parent/child have their own branches to 
 Both run section A
 Child runs section B
 Parent runs section C
-Both run section D
+Neither runs section D
 
 # Part 4:
 9.
@@ -75,3 +75,26 @@ The parent process ended and made the child process an orphan.  The child got a 
 
 # Part 5:
 14.
+I ran it multiple times and got two results -
+coins@Thicket:~/CS324/hw3$ ./fork
+coins@Thicket:~/CS324/hw3$ cat fork-output.txt
+BEFORE FORK
+SECTION A
+SECTION C
+SECTION A
+SECTION B
+coins@Thicket:~/CS324/hw3$ ./fork
+coins@Thicket:~/CS324/hw3$ cat fork-output.txt
+BEFORE FORK
+SECTION A
+SECTION A
+SECTION C
+SECTION B
+15.
+Here you can clearly see the scheduler taking over and letting the processes run in no particular order.
+16.
+coins@Thicket:~/CS324/hw3$ ./fork
+Hello from section B
+
+# Part 6:
+17.
