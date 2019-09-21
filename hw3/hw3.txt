@@ -98,3 +98,18 @@ Hello from section B
 
 # Part 6:
 17.
+coins@Thicket:~/CS324/hw3$ echo foobar | ./fork /bin/cat
+Program "./fork" has pid 12225.
+Running exec of "/bin/cat"
+foobar
+18.
+coins@Thicket:~/CS324/hw3$ echo foobar | ./fork /bin/cat
+Program "./fork" has pid 12403.
+Running exec of "/bin/cat"
+coins@Thicket:~/CS324/hw3$ cat fork-output.txt
+BEFORE FORK
+SECTION A
+SECTION C
+SECTION A
+SECTION B
+foobar

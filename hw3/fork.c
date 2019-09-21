@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
 	int p[2];
 	if (pipe(p) < 0)
 	{
-		puts("bad pipe");
+		fprintf(stderr, "could not pipe()");
 		exit(0);
 	}
 
@@ -31,9 +31,6 @@ int main(int argc, char *argv[])
 	fprintf(file, "SECTION A\n");
 	fflush(file);
 
-	// printf("Section A;  pid %d\n", getpid());
-	// sleep(30);
-
 	/* END SECTION A */
 	if (pid == 0)
 	{
@@ -45,9 +42,22 @@ int main(int argc, char *argv[])
 		FILE *write_pipe = fdopen(p[1], "w");
 		fputs("Hello from section B\n", write_pipe);
 
-		// printf("Section B\n");
-		// sleep(30);
-		// printf("Section B done sleeping\n");
+		/* BEGIN EXECVE */
+		char *newenviron[] = {NULL};
+
+		printf("Program \"%s\" has pid %d.\n", argv[0], getpid());
+
+		if (argc <= 1)
+		{
+			printf("No program to exec.  Exiting...\n");
+			exit(0);
+		}
+
+		printf("Running exec of \"%s\"\n", argv[1]);
+		dup2(fileno(file), 1);
+		execve(argv[1], &argv[1], newenviron);
+		printf("End of program \"%s\".\n", argv[0]);
+		/* END EXECVE */
 
 		exit(0);
 
@@ -65,11 +75,7 @@ int main(int argc, char *argv[])
 		fgets(message, 100, read_pipe);
 		printf("%s\n", message);
 
-		// printf("Section C\n");
-		// sleep(30);
 		wait(NULL);
-		// sleep(30);
-		// printf("Section C done sleeping\n");
 
 		exit(0);
 
@@ -80,7 +86,6 @@ int main(int argc, char *argv[])
 	fflush(file);
 
 	printf("Section D\n");
-	// sleep(30);
 
 	/* END SECTION D */
 }
