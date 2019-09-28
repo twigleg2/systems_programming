@@ -203,6 +203,8 @@ void eval(char *cmdline)
         setpgid(0, 0); //gives the child a unique group id
         char *envp[] = {NULL};
         execve(argv[0], argv, envp);
+        printf("%s: Command not found\n", argv[0]);
+        fflush(stdout);
         exit(1);
     }
     addjob(jobs, pid, state, cmdline);
@@ -282,6 +284,19 @@ int parseline(const char *cmdline, char **argv)
     return bg;
 }
 
+int isnum(char *str)
+{
+    while (*str != '\0')
+    {
+        if (!isdigit(*str))
+        {
+            return 0;
+        }
+        str++;
+    }
+    return 1;
+}
+
 /* 
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.  
@@ -299,12 +314,12 @@ int builtin_cmd(char **argv)
     }
     else if (strcmp(argv[0], "bg") == 0)
     {
-        //bg
+        do_bgfg(argv);
         return 1;
     }
     else if (strcmp(argv[0], "fg") == 0)
     {
-        //fg
+        do_bgfg(argv);
         return 1;
     }
 
@@ -316,6 +331,68 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv)
 {
+    //check if argument exists
+    if (!argv[1])
+    {
+        printf("%s command requires PID or %%jobid argument\n", argv[0]);
+        fflush(stdout);
+        return;
+    }
+    //check to make sure argument is a number
+    char *checknum;
+    if (argv[1][0] == '%')
+    {
+        checknum = argv[1] + 1;
+    }
+    else
+    {
+        checknum = argv[1];
+    }
+    if (!isnum(checknum))
+    {
+        printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+        fflush(stdout);
+        return;
+    }
+    //get job
+    struct job_t *job;
+    if (argv[1][0] == '%')
+    {
+        job = getjobjid(jobs, atoi(argv[1] + 1));
+        if (job == NULL)
+        {
+            printf("%s: No such job\n", argv[1]);
+            fflush(stdout);
+            return;
+        }
+    }
+    else
+    {
+        job = getjobpid(jobs, atoi(argv[1]));
+        if (job == NULL)
+        {
+            printf("(%s): No such process\n", argv[1]);
+            fflush(stdout);
+            return;
+        }
+    }
+    int pid = job->pid;
+
+    if (strcmp(argv[0], "bg") == 0)
+    {
+        //bg
+        kill(-pid, SIGCONT);
+        job->state = BG;
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+        fflush(stdout);
+    }
+    else if (strcmp(argv[0], "fg") == 0)
+    {
+        //fg
+        kill(-pid, SIGCONT);
+        job->state = FG;
+        waitfg(pid);
+    }
     return;
 }
 
