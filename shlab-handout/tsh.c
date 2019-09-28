@@ -184,19 +184,38 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline)
 {
-    char *argv[MAXARGS]; //TODO make sure this works
-    int isbg = parseline(cmdline, argv);
+    char *argv[MAXARGS];
+    int state = UNDEF;
+    state = parseline(cmdline, argv) ? BG : FG;
     if (builtin_cmd(argv))
     {
         return;
     }
-    if (Fork() == 0)
-    { // child
-        char *envp[] = {NULL};
-        // const char* filename, char *constarv[], char *const envp[]q
-        execve(argv[0], argv, envp); // TODO what environemtn variables, if any, do I need?
-    }
+    pid_t pid;
+    sigset_t mask_all, prev_all;
+    sigemptyset(&mask_all);
+    sigaddset(&mask_all, SIGCHLD);
+    sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
 
+    if ((pid = Fork()) == 0)
+    {
+        sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        setpgid(0, 0); //gives the child a unique group id
+        char *envp[] = {NULL};
+        execve(argv[0], argv, envp);
+        exit(1);
+    }
+    addjob(jobs, pid, state, cmdline);
+    sigprocmask(SIG_SETMASK, &prev_all, NULL);
+    if (state == FG)
+    {
+        waitfg(pid);
+    }
+    else
+    {
+        struct job_t *job = getjobpid(jobs, pid);
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+    }
     return;
 }
 
@@ -275,15 +294,18 @@ int builtin_cmd(char **argv)
     }
     else if (strcmp(argv[0], "jobs") == 0)
     {
-        //jobs
+        listjobs(jobs);
+        return 1;
     }
     else if (strcmp(argv[0], "bg") == 0)
     {
         //bg
+        return 1;
     }
     else if (strcmp(argv[0], "fg") == 0)
     {
         //fg
+        return 1;
     }
 
     return 0; /* not a builtin command */
@@ -302,7 +324,11 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
-    return; //TODO this is next, and the sigchld handler
+    while (pid == fgpid(jobs))
+    {
+        sleep(1);
+    }
+    return;
 }
 
 /*****************
@@ -318,7 +344,54 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig)
 {
-    return;
+    int olderrno = errno;
+    int wstatus;
+    sigset_t mask_all, prev_all;
+    pid_t pid;
+    sigfillset(&mask_all);
+    while ((pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED)) > 0)
+    { /* Reap child */
+        sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+        if (WIFEXITED(wstatus))
+        {
+            deletejob(jobs, pid); /* Delete the child from the job list */
+        }
+        else if (WIFSIGNALED(wstatus))
+        {
+            if (WTERMSIG(wstatus) == SIGINT)
+            {
+                struct job_t *job = getjobpid(jobs, pid);
+                int jid = job->jid;
+                deletejob(jobs, pid);
+                printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, SIGINT);
+                fflush(stdout);
+            }
+            else
+            {
+                printf("I don't know how to handle that kind of terminating signal\n");
+                fflush(stdout);
+            }
+        }
+        else if (WIFSTOPPED(wstatus))
+        {
+            if (WSTOPSIG(wstatus) == SIGTSTP)
+            {
+                struct job_t *job = getjobpid(jobs, pid);
+                job->state = ST;
+                printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, SIGTSTP);
+                fflush(stdout);
+            }
+            else
+            {
+                printf("I don't know how to handle that kind of stopping signal\n");
+                fflush(stdout);
+            }
+        }
+    }
+    sigprocmask(SIG_SETMASK, &prev_all, NULL);
+    // if (errno != ECHILD)
+    //     Sio_error("waitpid error");
+    errno = olderrno;
 }
 
 /* 
@@ -328,6 +401,15 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig)
 {
+    int olderrno = errno;
+
+    pid_t pid = fgpid(jobs);
+    if (pid > 0)
+    {
+        kill(-pid, SIGINT);
+    }
+
+    errno = olderrno;
     return;
 }
 
@@ -338,6 +420,14 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig)
 {
+    int olderrno = errno;
+
+    pid_t pid = fgpid(jobs);
+    if (pid > 0)
+    {
+        kill(-pid, SIGTSTP);
+    }
+    errno = olderrno;
     return;
 }
 
