@@ -1,0 +1,19 @@
+## 1
+This doesn't work because the fuction is comparing pointer values.  Use strcmp().
+
+## 2
+This doesn't work because the function is assigning pointer values, it's not changing the contents of memory.  use strcpy().
+
+## 3
+The data is destroyed when it goes out of scope by the function ending.  use malloc() to allocate space.
+
+## 4
+Because the array has a zero in it, strlen will not work.  Therefore, you must use sizeof() to get the size of the array.
+However, inside the function the 'array' is a pointer, and pointers have size 8 on a 64bit machine.
+So, get the sizeof() array in main and pass it into the function.
+
+## 5
+Indexed into the array instead of using pointer arithmatic.  str[begin] != str + begin
+
+## 6
+strtok modifies the string, so make a copy of the original string and pass in a copy.

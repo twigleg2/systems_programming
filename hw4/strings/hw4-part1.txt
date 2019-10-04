@@ -1,0 +1,31 @@
+# 9.11
+## A
+00,0010,0111,1100
+
+## B
+* VPN  = 0x09
+* TLBI = 0x1
+* TLBT = 0x02
+* TLB Hit = NO
+* Page Fault = NO
+* PPN  = 0x17
+
+## C
+0x5FC
+0101,1111,1100
+
+# 9.12
+## A
+00,0011,1010,1001
+
+## B
+* VPN  = 0x0E
+* TLBI = 0x2
+* TLBT = 0x03
+* TLB Hit = NO
+* Page Fault = NO
+* PPN  = 0x11
+
+## C
+0x449
+0100,01/10,1001
