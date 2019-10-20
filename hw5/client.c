@@ -7,6 +7,7 @@
 #include <string.h>
 
 #define BUF_SIZE 500
+#define MSG_MAX 4096
 
 int main(int argc, char *argv[])
 {
@@ -67,35 +68,57 @@ int main(int argc, char *argv[])
 
 	/* Send remaining command-line arguments as separate
 	   datagrams, and read responses from server */
-
-	for (j = 3; j < argc; j++)
+	char message[MSG_MAX];
+	int bytesRead = fread(message, 1, MSG_MAX, stdin);
+	//
+	int bytesWritten = 0;
+	while (bytesWritten != bytesRead)
 	{
-		len = strlen(argv[j]) + 1;
-		/* +1 for terminating null byte */
-
-		if (len + 1 > BUF_SIZE)
+		int checkErr = write(sfd, message + bytesWritten, bytesRead - bytesWritten);
+		if (checkErr == -1)
 		{
-			fprintf(stderr,
-					"Ignoring long message in argument %d\n", j);
-			continue;
-		}
-
-		sleep(2);
-		if (write(sfd, argv[j], len) != len)
-		{
-			fprintf(stderr, "partial/failed write\n");
+			fprintf(stderr, "write error");
 			exit(EXIT_FAILURE);
 		}
-
-		// nread = read(sfd, buf, BUF_SIZE);
-		// if (nread == -1)
-		// {
-		// 	perror("read");
-		// 	exit(EXIT_FAILURE);
-		// }
-
-		printf("Received %zd bytes: %s\n", nread, buf);
+		bytesWritten += checkErr;
 	}
+
+	nread = read(sfd, buf, BUF_SIZE);
+	if (nread == -1)
+	{
+		perror("read");
+		exit(EXIT_FAILURE);
+	}
+	fprintf(stdout, "%s\n", buf);
+
+	// for (j = 3; j < argc; j++)
+	// {
+	// 	len = strlen(argv[j]) + 1;
+	// 	/* +1 for terminating null byte */
+
+	// 	if (len + 1 > BUF_SIZE)
+	// 	{
+	// 		fprintf(stderr,
+	// 				"Ignoring long message in argument %d\n", j);
+	// 		continue;
+	// 	}
+
+	// 	sleep(2);
+	// 	if (write(sfd, argv[j], len) != len)
+	// 	{
+	// 		fprintf(stderr, "partial/failed write\n");
+	// 		exit(EXIT_FAILURE);
+	// 	}
+
+	// 	// nread = read(sfd, buf, BUF_SIZE);
+	// 	// if (nread == -1)
+	// 	// {
+	// 	// 	perror("read");
+	// 	// 	exit(EXIT_FAILURE);
+	// 	// }
+
+	// 	printf("Received %zd bytes: %s\n", nread, buf);
+	// }
 
 	exit(EXIT_SUCCESS);
 }

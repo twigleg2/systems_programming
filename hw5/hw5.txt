@@ -109,3 +109,25 @@ Received 140591830898372 bytes:
 TCP send a response back and UDP doesn't.
 
 17.
+sha1sum client
+5dd4c001794d3071d23d910419088af73b42f6f6  client
+
+18.
+nc -l 1234 | sha1sum
+0ef39a3f241cdd6552ad131e01afa9171b3dab8d  -
+./client 127.0.0.1 1234 < alpha.txt
+
+19.
+./client www-notls.imaal.byu.edu 80 <file-http.txt 
+HTTP/1.1 200 OK
+Date: Sun, 20 Oct 2019 03:09:56 GMT
+Server: Apache/2.4.25 (Debian)
+Content-length: 809
+Vary: Accept-Encoding
+Content-Type: text/plain
+
+
+1. Be still, my soul: The Lord is on thy side;
+With patience bear thy cross of grief or pain.
+Leave to thy God to order and provide;
+In ev'ry change he faithful
