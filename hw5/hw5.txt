@@ -94,3 +94,18 @@ Proto Recv-Q Send-Q Local Address           Foreign Address         State       
 tcp        0      0 127.0.0.1:42822         127.0.0.1:1234          TIME_WAIT   -            
 
 14.
+sha1sum server
+ef240dfe706d6edb26a5ccab95740a370bea5801  server
+
+15.
+./server 1234
+./client 127.0.0.1 1234 foo bar baz catvideo
+Received 140591830898372 bytes: 
+Received 140591830898372 bytes: 
+Received 140591830898372 bytes: 
+Received 140591830898372 bytes: 
+
+16.
+TCP send a response back and UDP doesn't.
+
+17.
