@@ -1,0 +1,133 @@
+# hw5
+## Gaven Finch
+
+1.
+socket()
+conncet()
+
+2.
+nc -kl 1234
+
+3.
+netstat -ulpn
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+udp        0      0 127.0.0.53:53           0.0.0.0:*                           -                   
+udp        0      0 0.0.0.0:68              0.0.0.0:*                           -                   
+udp        0      0 0.0.0.0:631             0.0.0.0:*                           -                   
+udp        0      0 0.0.0.0:1234            0.0.0.0:*                           4338/nc             
+udp        0      0 0.0.0.0:5353            0.0.0.0:*                           -                   
+udp        0      0 0.0.0.0:44342           0.0.0.0:*                           -                   
+udp6       0      0 :::5353                 :::*                                -                   
+udp6       0      0 :::39142                :::*                                -      
+
+I see a lot of syatem processes, and my lone nc command listening on port 1234.
+
+4.
+sha1sum client
+f89c820dfd6a7d2a8b46c7ee1daee96e0018e48e  client
+
+5.
+./client 127.0.0.1 1234 foo bar baz catvideo
+foobarbazcatvideo
+
+6.
+netstat -unp
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+Active Internet connections (w/o servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+udp        0      0 127.0.0.1:36957         127.0.0.1:1234          ESTABLISHED 4727/./client       
+udp        0      0 127.0.0.1:1234          127.0.0.1:36957         ESTABLISHED 4725/nc             
+udp        0      0 127.0.0.1:55104         127.0.0.53:53           ESTABLISHED 4047/code           
+udp        0      0 127.0.0.1:59617         127.0.0.53:53           ESTABLISHED 4088/Microsoft.VSCo 
+
+7.
+netstat -unp
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+Active Internet connections (w/o servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+udp        0      0 127.0.0.1:55104         127.0.0.53:53           ESTABLISHED 4047/code           
+udp        0      0 127.0.0.1:59617         127.0.0.53:53           ESTABLISHED 4088/Microsoft.VSCo 
+
+8.
+sha1sum client
+0225b2d9c73b4f8cc0b5f92871207dca92b1a00f  client
+
+9.
+nc -kl 1234
+
+10.
+netstat -tnlp
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+tcp        0      0 0.0.0.0:1234            0.0.0.0:*               LISTEN      4919/nc             
+tcp        0      0 127.0.0.53:53           0.0.0.0:*               LISTEN      -                   
+tcp        0      0 127.0.0.1:631           0.0.0.0:*               LISTEN      -                   
+tcp        0      0 127.0.0.1:3306          0.0.0.0:*               LISTEN      -                   
+tcp6       0      0 ::1:631                 :::*                    LISTEN      -   
+
+11.
+./client 127.0.0.1 1234 foo bar baz catvideo
+foobarbazcatvideo
+
+12.
+netstat -tnp
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+Active Internet connections (w/o servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+tcp        0      0 127.0.0.1:1234          127.0.0.1:42822         ESTABLISHED 4919/nc             
+tcp        0      0 127.0.0.1:42822         127.0.0.1:1234          ESTABLISHED 4945/./client 
+
+13.
+netstat -tnp
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+Active Internet connections (w/o servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+tcp        0      0 127.0.0.1:42822         127.0.0.1:1234          TIME_WAIT   -            
+
+14.
+sha1sum server
+ef240dfe706d6edb26a5ccab95740a370bea5801  server
+
+15.
+./server 1234
+./client 127.0.0.1 1234 foo bar baz catvideo
+Received 140591830898372 bytes: 
+Received 140591830898372 bytes: 
+Received 140591830898372 bytes: 
+Received 140591830898372 bytes: 
+
+16.
+TCP send a response back and UDP doesn't.
+
+17.
+sha1sum client
+5dd4c001794d3071d23d910419088af73b42f6f6  client
+
+18.
+nc -l 1234 | sha1sum
+0ef39a3f241cdd6552ad131e01afa9171b3dab8d  -
+./client 127.0.0.1 1234 < alpha.txt
+
+19.
+./client www-notls.imaal.byu.edu 80 <file-http.txt 
+HTTP/1.1 200 OK
+Date: Sun, 20 Oct 2019 03:09:56 GMT
+Server: Apache/2.4.25 (Debian)
+Content-length: 809
+Vary: Accept-Encoding
+Content-Type: text/plain
+
+
+1. Be still, my soul: The Lord is on thy side;
+With patience bear thy cross of grief or pain.
+Leave to thy God to order and provide;
+In ev'ry change he faithful
