@@ -9,6 +9,7 @@
 #define HEADER_SIZE 12
 #define FOOTER_SIZE 4 // technically part of the query. type and class of the query.
 #define RES_MAX 65536
+#define RR_COUNT_LOCATION 6
 
 typedef unsigned int dns_rr_ttl;
 typedef unsigned short dns_rr_type;
@@ -42,7 +43,9 @@ void free_answer_entries(dns_answer_entry *ans)
 	while (ans != NULL)
 	{
 		next = ans->next;
+		printf("about to do first fee\n");
 		free(ans->value);
+		printf("finished first fee\n");
 		free(ans);
 		ans = next;
 	}
@@ -181,7 +184,8 @@ void name_ascii_to_wire(char *name, unsigned char *wire)
 	wire[bytes_copied] = 0; //add the null char
 }
 
-char *name_ascii_from_wire(unsigned char *wire, int *indexp)
+// char *name_ascii_from_wire(unsigned char *wire, int *indexp)
+char *name_ascii_from_wire(unsigned char *wire, int index)
 {
 	/*
 	 * Extract the wire-formatted DNS name at the offset specified by
@@ -196,6 +200,29 @@ char *name_ascii_from_wire(unsigned char *wire, int *indexp)
 	 * OUTPUT: a string containing the string representation of the name,
 	 *              allocated on the heap.
 	 */
+	char *name = malloc(RES_MAX);
+	int bytes_copied = 0;
+
+	while (wire[index]) //not null char
+	{
+		if (wire[index] >= 0xC0)
+		{
+			index = wire[index + 1];
+			continue;
+		}
+		unsigned char size_label = wire[index];
+		memcpy(name + bytes_copied, wire + index, size_label + 1);
+		name[bytes_copied] = '.';
+		bytes_copied += size_label + 1;
+		index += size_label + 1;
+	}
+	name[bytes_copied] = 0;
+	char *return_me = malloc(strlen(name)); //lose the first size_label
+	strcpy(return_me, name + 1);
+	free(name);
+
+	canonicalize_name(return_me);
+	return return_me; //get rid of the beginning size label
 }
 
 dns_rr rr_from_wire(unsigned char *wire, int *indexp, int query_only)
@@ -345,7 +372,6 @@ int send_recv_message(unsigned char *request, int requestlen, unsigned char *res
 	return bytes_received;
 }
 
-// TODO: required
 dns_answer_entry *resolve(char *qname, char *server, char *port)
 {
 	int size = HEADER_SIZE + strlen(qname) + 2 /*first size label and null char*/ + FOOTER_SIZE;
@@ -354,11 +380,28 @@ dns_answer_entry *resolve(char *qname, char *server, char *port)
 	print_bytes(wire, size);
 
 	char response[RES_MAX];
-	send_recv_message(wire, size, response, server, port);
+	int bytes_received = send_recv_message(wire, size, response, server, port);
 
-	//
-	exit(0);
+	dns_answer_entry *ans_list = malloc(sizeof(struct dns_answer_entry));
+	unsigned short totalRRs = response[RR_COUNT_LOCATION];
+	totalRRs << 8; //becuase big/little endian mismatch, I can't simply grab the data out of the array with pointer type casting.
+	totalRRs += response[RR_COUNT_LOCATION + 1];
+
+	// for (int i = 0; i < totalRRs; i++)
+	// {
+	ans_list->value = name_ascii_from_wire(response, size); // TODO: remember to calculate the correct index
+	ans_list->next = NULL;
+	// }
+
+	printf("number RRs: %#x\n", totalRRs);
+	return ans_list;
 }
+
+// struct dns_answer_entry
+// {
+// 	char *value;
+// 	struct dns_answer_entry *next;
+// };
 
 int main(int argc, char *argv[])
 {
