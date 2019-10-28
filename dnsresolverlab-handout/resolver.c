@@ -1,10 +1,14 @@
-#include<arpa/inet.h>
-#include<netinet/in.h>
-#include<stdio.h>
-#include<string.h>
-#include<stdlib.h>
-#include<sys/types.h>
-#include<sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <netdb.h>
+#include <unistd.h>
+
+#define HEADER_SIZE 12
+#define FOOTER_SIZE 4 // technically part of the query. type and class of the query.
+#define RES_MAX 65536
 
 typedef unsigned int dns_rr_ttl;
 typedef unsigned short dns_rr_type;
@@ -14,7 +18,8 @@ typedef unsigned short dns_rr_count;
 typedef unsigned short dns_query_id;
 typedef unsigned short dns_flags;
 
-typedef struct {
+typedef struct
+{
 	char *name;
 	dns_rr_type type;
 	dns_rr_class class;
@@ -24,15 +29,18 @@ typedef struct {
 } dns_rr;
 
 struct dns_answer_entry;
-struct dns_answer_entry {
+struct dns_answer_entry
+{
 	char *value;
 	struct dns_answer_entry *next;
 };
 typedef struct dns_answer_entry dns_answer_entry;
 
-void free_answer_entries(dns_answer_entry *ans) {
+void free_answer_entries(dns_answer_entry *ans)
+{
 	dns_answer_entry *next;
-	while (ans != NULL) {
+	while (ans != NULL)
+	{
 		next = ans->next;
 		free(ans->value);
 		free(ans);
@@ -40,48 +48,72 @@ void free_answer_entries(dns_answer_entry *ans) {
 	}
 }
 
-void print_bytes(unsigned char *bytes, int byteslen) {
+void print_bytes(unsigned char *bytes, int byteslen)
+{
 	int i, j, byteslen_adjusted;
 	unsigned char c;
 
-	if (byteslen % 8) {
+	if (byteslen % 8)
+	{
 		byteslen_adjusted = ((byteslen / 8) + 1) * 8;
-	} else {
+	}
+	else
+	{
 		byteslen_adjusted = byteslen;
 	}
-	for (i = 0; i < byteslen_adjusted + 1; i++) {
-		if (!(i % 8)) {
-			if (i > 0) {
-				for (j = i - 8; j < i; j++) {
-					if (j >= byteslen_adjusted) {
+	for (i = 0; i < byteslen_adjusted + 1; i++)
+	{
+		if (!(i % 8))
+		{
+			if (i > 0)
+			{
+				for (j = i - 8; j < i; j++)
+				{
+					if (j >= byteslen_adjusted)
+					{
 						printf("  ");
-					} else if (j >= byteslen) {
+					}
+					else if (j >= byteslen)
+					{
 						printf("  ");
-					} else if (bytes[j] >= '!' && bytes[j] <= '~') {
+					}
+					else if (bytes[j] >= '!' && bytes[j] <= '~')
+					{
 						printf(" %c", bytes[j]);
-					} else {
+					}
+					else
+					{
 						printf(" .");
 					}
 				}
 			}
-			if (i < byteslen_adjusted) {
+			if (i < byteslen_adjusted)
+			{
 				printf("\n%02X: ", i);
 			}
-		} else if (!(i % 4)) {
+		}
+		else if (!(i % 4))
+		{
 			printf(" ");
 		}
-		if (i >= byteslen_adjusted) {
+		if (i >= byteslen_adjusted)
+		{
 			continue;
-		} else if (i >= byteslen) {
+		}
+		else if (i >= byteslen)
+		{
 			printf("   ");
-		} else {
+		}
+		else
+		{
 			printf("%02X ", bytes[i]);
 		}
 	}
 	printf("\n");
 }
 
-void canonicalize_name(char *name) {
+void canonicalize_name(char *name)
+{
 	/*
 	 * Canonicalize name in place.  Change all upper-case characters to
 	 * lower case and remove the trailing dot if there is any.  If the name
@@ -90,30 +122,36 @@ void canonicalize_name(char *name) {
 	 *
 	 * INPUT:  name: the domain name that should be canonicalized in place
 	 */
-	
+
 	int namelen, i;
 
 	// leave the root zone alone
-	if (strcmp(name, ".") == 0) {
+	if (strcmp(name, ".") == 0)
+	{
 		return;
 	}
 
 	namelen = strlen(name);
 	// remove the trailing dot, if any
-	if (name[namelen - 1] == '.') {
+	if (name[namelen - 1] == '.')
+	{
 		name[namelen - 1] = '\0';
 	}
 
 	// make all upper-case letters lower case
-	for (i = 0; i < namelen; i++) {
-		if (name[i] >= 'A' && name[i] <= 'Z') {
+	for (i = 0; i < namelen; i++)
+	{
+		if (name[i] >= 'A' && name[i] <= 'Z')
+		{
 			name[i] += 32;
 		}
 	}
 }
 
-int name_ascii_to_wire(char *name, unsigned char *wire) {
-	/* 
+// originally defined to returned an int, I modified it.
+void name_ascii_to_wire(char *name, unsigned char *wire)
+{
+	/*
 	 * Convert a DNS name from string representation (dot-separated labels)
 	 * to DNS wire format, using the provided byte array (wire).  Return
 	 * the number of bytes used by the name in wire format.
@@ -123,10 +161,29 @@ int name_ascii_to_wire(char *name, unsigned char *wire) {
 	 *              wire-formatted name should be constructed
 	 * OUTPUT: the length of the wire-formatted name.
 	 */
+
+	char name_cpy[strlen(name) + 1];
+	strcpy(name_cpy, name);
+	const char delim[] = {'.'};
+
+	int bytes_copied = 0;
+	char *token = strtok(name_cpy, delim);
+	while (token)
+	{
+		int len = strlen(token);
+		wire[bytes_copied] = len;
+		bytes_copied++;
+
+		memcpy(wire + bytes_copied, token, len);
+		bytes_copied += len;
+		token = strtok(NULL, delim);
+	}
+	wire[bytes_copied] = 0; //add the null char
 }
 
-char *name_ascii_from_wire(unsigned char *wire, int *indexp) {
-	/* 
+char *name_ascii_from_wire(unsigned char *wire, int *indexp)
+{
+	/*
 	 * Extract the wire-formatted DNS name at the offset specified by
 	 * *indexp in the array of bytes provided (wire) and return its string
 	 * representation (dot-separated labels) in a char array allocated for
@@ -141,10 +198,11 @@ char *name_ascii_from_wire(unsigned char *wire, int *indexp) {
 	 */
 }
 
-dns_rr rr_from_wire(unsigned char *wire, int *indexp, int query_only) {
-	/* 
+dns_rr rr_from_wire(unsigned char *wire, int *indexp, int query_only)
+{
+	/*
 	 * Extract the wire-formatted resource record at the offset specified by
-	 * *indexp in the array of bytes provided (wire) and return a 
+	 * *indexp in the array of bytes provided (wire) and return a
 	 * dns_rr (struct) populated with its contents. Update the value
 	 * pointed to by indexp to the next value beyond the resource record.
 	 *
@@ -160,9 +218,9 @@ dns_rr rr_from_wire(unsigned char *wire, int *indexp, int query_only) {
 	 */
 }
 
-
-int rr_to_wire(dns_rr rr, unsigned char *wire, int query_only) {
-	/* 
+int rr_to_wire(dns_rr rr, unsigned char *wire, int query_only)
+{
+	/*
 	 * Convert a DNS resource record struct to DNS wire format, using the
 	 * provided byte array (wire).  Return the number of bytes used by the
 	 * name in wire format.
@@ -180,8 +238,10 @@ int rr_to_wire(dns_rr rr, unsigned char *wire, int query_only) {
 	 */
 }
 
-unsigned short create_dns_query(char *qname, dns_rr_type qtype, unsigned char *wire) {
-	/* 
+// void create_dns_query(char *qname, dns_rr_type qtype, unsigned char *wire) // original definition
+void create_dns_query(char *qname, int wire_size, unsigned char *wire)
+{
+	/*
 	 * Create a wire-formatted DNS (query) message using the provided byte
 	 * array (wire).  Create the header and question sections, including
 	 * the qname and qtype.
@@ -192,10 +252,30 @@ unsigned short create_dns_query(char *qname, dns_rr_type qtype, unsigned char *w
 	 *               message should be constructed
 	 * OUTPUT: the length of the DNS wire message
 	 */
+	int qsize = strlen(qname) + 2;
+	char dest[qsize];
+	name_ascii_to_wire(qname, dest);
+	// print_bytes(dest, qsize);
+
+	unsigned char rand1 = random() % 256;
+	unsigned char rand2 = random() % 256;
+
+	unsigned char header[] = {
+		rand1, rand2, 0x01, 0x00, //
+		0x00, 0x01, 0x00, 0x00,   //
+		0x00, 0x00, 0x00, 0x00,   //
+	};
+	unsigned char footer[] = {
+		0x00, 0x01, 0x00, 0x01, //
+	};
+	memcpy(wire, header, HEADER_SIZE);
+	memcpy(wire + HEADER_SIZE, dest, qsize);
+	memcpy(wire + HEADER_SIZE + qsize, footer, FOOTER_SIZE);
 }
 
-dns_answer_entry *get_answer_address(char *qname, dns_rr_type qtype, unsigned char *wire) {
-	/* 
+dns_answer_entry *get_answer_address(char *qname, dns_rr_type qtype, unsigned char *wire)
+{
+	/*
 	 * Extract the IPv4 address from the answer section, following any
 	 * aliases that might be found, and return the string representation of
 	 * the IP address.  If no address is found, then return NULL.
@@ -208,8 +288,10 @@ dns_answer_entry *get_answer_address(char *qname, dns_rr_type qtype, unsigned ch
 	 */
 }
 
-int send_recv_message(unsigned char *request, int requestlen, unsigned char *response, char *server, unsigned short port) {
-	/* 
+// int send_recv_message(unsigned char *request, int requestlen, unsigned char *response, char *server, unsigned short port)
+int send_recv_message(unsigned char *request, int requestlen, unsigned char *response, char *server, char *port)
+{
+	/*
 	 * Send a message (request) over UDP to a server (server) and port
 	 * (port) and wait for a response, which is placed in another byte
 	 * array (response).  Create a socket, "connect()" it to the
@@ -221,29 +303,89 @@ int send_recv_message(unsigned char *request, int requestlen, unsigned char *res
 	 *             response should be received
 	 * OUTPUT: the size (bytes) of the response received
 	 */
+
+	//coppied from hw5
+	int sfd;
+	struct addrinfo hints;
+	struct addrinfo *result, *rp;
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_INET;		/* Allow IPv4 */
+	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0; /* Any protocol */
+
+	int s = getaddrinfo(server, port, &hints, &result); // TODO: is this right?
+	if (s != 0)
+	{
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
+		exit(EXIT_FAILURE);
+	}
+	for (rp = result; rp != NULL; rp = rp->ai_next)
+	{
+		sfd = socket(rp->ai_family, rp->ai_socktype,
+					 rp->ai_protocol);
+		if (sfd == -1)
+			continue;
+
+		if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1)
+			break; /* Success */
+
+		close(sfd);
+	}
+	if (rp == NULL)
+	{ /* No address succeeded */
+		fprintf(stderr, "Could not connect\n");
+		exit(EXIT_FAILURE);
+	}
+	freeaddrinfo(result); /* No longer needed */
+
+	int bytes_written = send(sfd, request, requestlen, 0);
+	int bytes_received = recv(sfd, response, RES_MAX, 0);
+	print_bytes(response, bytes_received);
+	return bytes_received;
 }
 
-dns_answer_entry *resolve(char *qname, char *server, char *port) {
+// TODO: required
+dns_answer_entry *resolve(char *qname, char *server, char *port)
+{
+	int size = HEADER_SIZE + strlen(qname) + 2 /*first size label and null char*/ + FOOTER_SIZE;
+	char wire[size];
+	create_dns_query(qname, size, wire);
+	print_bytes(wire, size);
+
+	char response[RES_MAX];
+	send_recv_message(wire, size, response, server, port);
+
+	//
+	exit(0);
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 	char *port;
 	dns_answer_entry *ans_list, *ans;
-	if (argc < 3) {
+	if (argc < 3)
+	{
 		fprintf(stderr, "Usage: %s <domain name> <server> [ <port> ]\n", argv[0]);
 		exit(1);
 	}
-	if (argc > 3) {
+	if (argc > 3)
+	{
 		port = argv[3];
-	} else {
+	}
+	else
+	{
 		port = "53";
 	}
+
 	ans = ans_list = resolve(argv[1], argv[2], port);
-	while (ans != NULL) {
+	while (ans != NULL)
+	{
 		printf("%s\n", ans->value);
 		ans = ans->next;
 	}
-	if (ans_list != NULL) {
+	if (ans_list != NULL)
+	{
 		free_answer_entries(ans_list);
 	}
 }
