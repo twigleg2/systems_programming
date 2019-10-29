@@ -10,6 +10,7 @@
 #define FOOTER_SIZE 4 // technically part of the query. type and class of the query.
 #define RES_MAX 65536
 #define RR_COUNT_LOCATION 6
+#define CNAME 5
 
 typedef unsigned int dns_rr_ttl;
 typedef unsigned short dns_rr_type;
@@ -43,9 +44,7 @@ void free_answer_entries(dns_answer_entry *ans)
 	while (ans != NULL)
 	{
 		next = ans->next;
-		printf("about to do first fee\n");
 		free(ans->value);
-		printf("finished first fee\n");
 		free(ans);
 		ans = next;
 	}
@@ -282,7 +281,6 @@ void create_dns_query(char *qname, int wire_size, unsigned char *wire)
 	int qsize = strlen(qname) + 2;
 	char dest[qsize];
 	name_ascii_to_wire(qname, dest);
-	// print_bytes(dest, qsize);
 
 	unsigned char rand1 = random() % 256;
 	unsigned char rand2 = random() % 256;
@@ -298,21 +296,6 @@ void create_dns_query(char *qname, int wire_size, unsigned char *wire)
 	memcpy(wire, header, HEADER_SIZE);
 	memcpy(wire + HEADER_SIZE, dest, qsize);
 	memcpy(wire + HEADER_SIZE + qsize, footer, FOOTER_SIZE);
-}
-
-dns_answer_entry *get_answer_address(char *qname, dns_rr_type qtype, unsigned char *wire)
-{
-	/*
-	 * Extract the IPv4 address from the answer section, following any
-	 * aliases that might be found, and return the string representation of
-	 * the IP address.  If no address is found, then return NULL.
-	 *
-	 * INPUT:  qname: the string containing the name that was queried
-	 * INPUT:  qtype: the integer representation of type of the query (type A == 1)
-	 * INPUT:  wire: the pointer to the array of bytes representing the DNS wire message
-	 * OUTPUT: a linked list of dns_answer_entrys the value member of each
-	 * reflecting either the name or IP address.  If
-	 */
 }
 
 // int send_recv_message(unsigned char *request, int requestlen, unsigned char *response, char *server, unsigned short port)
@@ -368,8 +351,40 @@ int send_recv_message(unsigned char *request, int requestlen, unsigned char *res
 
 	int bytes_written = send(sfd, request, requestlen, 0);
 	int bytes_received = recv(sfd, response, RES_MAX, 0);
-	print_bytes(response, bytes_received);
+	// print_bytes(response, bytes_received);
 	return bytes_received;
+}
+
+unsigned short swap_bytes_in_short(unsigned short s)
+{
+	// printf("Before: %#x\n", s);
+	unsigned short copy = s;
+	s = s << 8;
+	copy = copy >> 8;
+	s = s | copy;
+
+	// printf("After: %#x\n", s);
+	return s;
+}
+
+char *get_answer_address(unsigned char *wire, int index)
+{
+	/*
+	 * Extract the IPv4 address from the answer section, following any
+	 * aliases that might be found, and return the string representation of
+	 * the IP address.  If no address is found, then return NULL.
+	 *
+	 * INPUT:  qname: the string containing the name that was queried
+	 * INPUT:  qtype: the integer representation of type of the query (type A == 1)
+	 * INPUT:  wire: the pointer to the array of bytes representing the DNS wire message
+	 * OUTPUT: a linked list of dns_answer_entrys the value member of each
+	 * reflecting either the name or IP address.  If
+	 */
+
+	char *ip_address = malloc(16); //255.255.255.255\0 is the largest string
+
+	sprintf(ip_address, "%d.%d.%d.%d", wire[index], wire[index + 1], wire[index + 2], wire[index + 3]);
+	return ip_address;
 }
 
 dns_answer_entry *resolve(char *qname, char *server, char *port)
@@ -377,24 +392,61 @@ dns_answer_entry *resolve(char *qname, char *server, char *port)
 	int size = HEADER_SIZE + strlen(qname) + 2 /*first size label and null char*/ + FOOTER_SIZE;
 	char wire[size];
 	create_dns_query(qname, size, wire);
-	print_bytes(wire, size);
+	// print_bytes(wire, size);
 
-	char response[RES_MAX];
+	unsigned char response[RES_MAX];
 	int bytes_received = send_recv_message(wire, size, response, server, port);
 
-	dns_answer_entry *ans_list = malloc(sizeof(struct dns_answer_entry));
+	dns_answer_entry *current_ans = malloc(sizeof(struct dns_answer_entry));
+	dns_answer_entry *head = current_ans;
+	dns_answer_entry *prev;
 	unsigned short totalRRs = response[RR_COUNT_LOCATION];
-	totalRRs << 8; //becuase big/little endian mismatch, I can't simply grab the data out of the array with pointer type casting.
+	totalRRs <<= 8; //becuase big/little endian mismatch, I can't simply grab the data out of the array with pointer type casting.
 	totalRRs += response[RR_COUNT_LOCATION + 1];
 
-	// for (int i = 0; i < totalRRs; i++)
-	// {
-	ans_list->value = name_ascii_from_wire(response, size); // TODO: remember to calculate the correct index
-	ans_list->next = NULL;
-	// }
+	// unsigned char *RR = response + size; //begining of response section
+	int index = size;
+	for (int i = 0; i < totalRRs; i++)
+	{
+		current_ans->next = malloc(sizeof(struct dns_answer_entry));
 
-	printf("number RRs: %#x\n", totalRRs);
-	return ans_list;
+		int name_len;
+		if ((response + index)[0] >= 0xC0)
+		{
+			name_len = 2;
+		}
+		else
+		{
+			name_len = strlen((response + index)) + 1;
+		}
+		index += name_len;
+		index += 10; //useless info in the response record
+		if ((response + index - 10)[1] == CNAME)
+		{
+			//alias
+			current_ans->value = name_ascii_from_wire(response, index); // TODO: remember to calculate the correct index
+		}
+		else
+		{
+			// IP address
+			current_ans->value = get_answer_address(response, index);
+		}
+		prev = current_ans;
+		current_ans = current_ans->next;
+		unsigned short Rdata_len = response[index - 2];
+		Rdata_len <<= 8;
+		Rdata_len += response[index - 1];
+		// printf("Rdata_len = %#x\n", Rdata_len);
+		index += Rdata_len; // RDATA length;
+							// index += name_len;
+	}
+	if (totalRRs == 0)
+	{
+		return NULL;
+	}
+	prev->next = NULL;
+	free(current_ans);
+	return head;
 }
 
 // struct dns_answer_entry
