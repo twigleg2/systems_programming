@@ -1,0 +1,85 @@
+Gaven Finch
+
+# HW6
+
+## Part 1
+1.
+USER       PID  PPID NLWP   LWP    VSZ   RSS S CMD
+coins     1581   812    1  1581  12488  1056 S echoserveri
+
+2.
+1 process and 1 thread.  This is a concurrent server that can handle only 1 conection at a time.
+
+3.
+12488 virtual and 1056 resident
+
+4.
+The second nc that I started was able to connect and send it's data.  The third is still waiting.
+
+## Part 2
+5.
+USER       PID  PPID NLWP   LWP    VSZ   RSS S CMD
+coins     1652   812    1  1652  12408   856 S echoserverp
+coins     1654  1652    1  1654  12408   336 S echoserverp
+coins     1656  1652    1  1656  12408   332 S echoserverp
+coins     1658  1652    1  1658  12408   332 S echoserverp
+
+6.
+4 processes and 1 thread.  Fork() was used to create a new process for each connection.
+
+7.
+49,632‬ virtaul and 1856 resident
+
+## Part 3
+8.
+USER       PID  PPID NLWP   LWP    VSZ   RSS S CMD
+coins     1672   812    4  1672 233604   972 S echoservert
+coins     1672   812    4  1674 233604   972 S echoservert
+coins     1672   812    4  1676 233604   972 S echoservert
+coins     1672   812    4  1678 233604   972 S echoservert
+
+9.
+1 process and 4 threads.  Threads were created to handle multiple connections instead of processes.
+
+10.
+233604 virtual and 972 resident
+
+## Part 4
+11.
+USER       PID  PPID NLWP   LWP    VSZ   RSS S CMD
+coins     1732   812   11  1732 159908  1020 S echoservert_pre
+coins     1732   812   11  1733 159908  1020 S echoservert_pre
+coins     1732   812   11  1734 159908  1020 S echoservert_pre
+coins     1732   812   11  1735 159908  1020 S echoservert_pre
+coins     1732   812   11  1736 159908  1020 S echoservert_pre
+coins     1732   812   11  1737 159908  1020 S echoservert_pre
+coins     1732   812   11  1738 159908  1020 S echoservert_pre
+coins     1732   812   11  1739 159908  1020 S echoservert_pre
+coins     1732   812   11  1740 159908  1020 S echoservert_pre
+coins     1732   812   11  1741 159908  1020 S echoservert_pre
+coins     1732   812   11  1742 159908  1020 S echoservert_pre
+
+12.
+1 process and 11 threads.  10 pre-made threads were created to handle connections.
+
+13.
+159908 and 1020 resident
+
+## Part 5
+14. Can handle 'infinite' connections but each process can be expensive.
+
+15. Can also handle 'infinite' connections like the previous, and it can do so more efficiently, but address space is shared.
+
+16.  Uses 10 pre-made threads to quickly serve up to 10 connections, but can only serve 10 at a time.
+
+17.
+35:	sbuf_insert(&sbuf, connfd); 1 producer
+
+18.
+43:	int connfd = sbuf_remove(&sbuf); 10 consumers
+
+19.
+if  slots is zero, it will wait for slots to be possitive before continuing.
+
+20.
+34:  V(&sp->items);
