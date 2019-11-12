@@ -4,6 +4,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <unistd.h>
+#include <string.h>
 
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
@@ -14,15 +16,26 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64;
 
 int main(int argc, char *argv[])
 {
+    char buf[MAX_OBJECT_SIZE];
     //server
     int sfd;
     int s;
     struct sockaddr_in ip4addr;
+    struct sockaddr_storage peer_addr; //
+    socklen_t peer_addr_len;           //
+    ssize_t nread;                     //
     //client
     char *host;
     char *port;
-    struct addrinfo *hints;
-    struct addrinfo **result;
+    struct addrinfo hints;
+    struct addrinfo *result;
+    struct addrinfo *rp;
+
+    if (argc < 2)
+    {
+        printf("usage: %s port\n", argv[0]);
+        exit(1);
+    }
 
     // Provided server code
     ip4addr.sin_family = AF_INET;
@@ -45,14 +58,19 @@ int main(int argc, char *argv[])
         perror("listen error");
         exit(EXIT_FAILURE);
     }
+    // my server code
+    accept(sfd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+    nread = recv(sfd, buf, MAX_OBJECT_SIZE, 0);
+    printf("got %d bytes: %s", (int)nread, buf); //potentially won't output all the data received.
+
     // Provided client code
     /* Obtain address(es) matching host/port */
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_family = AF_UNSPEC;     /* Allow IPv4 or IPv6 */
     hints.ai_socktype = SOCK_STREAM; /* TCP socket */
     hints.ai_flags = 0;
-    hints.ai_protocol = 0; /* Any protocol */
-    s = getaddrinfo(host, port, &hints, &result);
+    hints.ai_protocol = 0;                        /* Any protocol */
+    s = getaddrinfo(host, port, &hints, &result); //host and port come from the original http GET request
     if (s != 0)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
@@ -78,7 +96,7 @@ and) try the next address. */
     }
     freeaddrinfo(result); /* No longer needed */
 
-    //END provided code
+    //
 
     printf("%s", user_agent_hdr);
     return 0;
