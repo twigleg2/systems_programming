@@ -54,8 +54,8 @@ int main(int argc, char *argv[])
     socklen_t peer_addr_len;
     ssize_t nread;
     int sfd2 = accept(sfd, (struct sockaddr *)&peer_addr, &peer_addr_len);
-    nread = read(sfd2, buf, MAX_OBJECT_SIZE);      // TODO: read in a loop?
-    printf("got %d bytes: %s\n", (int)nread, buf); // TODO: potentially won't output all the data received.
+    nread = read(sfd2, buf, MAX_OBJECT_SIZE);       // TODO: read in a loop?
+    printf("got %d bytes:\n%s\n", (int)nread, buf); // TODO: potentially won't output all the data received.
 
     //begin parsing
     char *req_type = strtok(buf, " ");
@@ -78,20 +78,78 @@ int main(int argc, char *argv[])
     }
     // find if contains port
     char *port = NULL; //default
-    char *colon = strchr(host, ':');
-    if (colon)
+    char *colonPos = strchr(host, ':');
+    if (colonPos)
     {
-        port = colon + 1; //set port to point to one char after colon
-        colon[0] = '\0';  //change colon to null char
+        port = colonPos + 1; //set port to point to one char after colon
+        colonPos[0] = '\0';  //change colon to null char
     }
     printf("host: %s, port: %s\n", host, port);
-    char *path = strtok(NULL, "HTTP/1.1");
+    char *path = strtok(NULL, "\r\n"); //path contains the rest of the first line, including HTTP/1.1
+    char *pathEnd = strchr(path, ' '); //find the first space, which is the real end of the path.
+    pathEnd[0] = '\0';
     if (path == NULL)
     {
         printf("bad request, not HTTP/1.1");
         // TODO discard request;
     }
-    printf("path: %s\n", path); //TODO the path is missing the beginning slash '/', it needs to be added
+    printf("path: %s\n\n", path);
+    // TODO: verify that HTTP/1.1 was sent, else invalid request
+
+    // begin putting together my request
+    char myRequest[MAX_OBJECT_SIZE] = "";
+    strcat(myRequest, req_type);
+    strcat(myRequest, " /"); //path is missing the beggining slash, so adding it here.
+    strcat(myRequest, path);
+    strcat(myRequest, " ");
+    strcat(myRequest, "HTTP/1.0\r\n");
+
+    int hasHostHeader = 0;
+    char *header;
+    while ((header = strtok(NULL, "\r\n")) != NULL)
+    {
+        char *colon = strchr(header, ':');
+        colon[0] = '\0'; // temporary
+
+        if (strcmp(header, "Connection") == 0)
+        {
+            //throw away, I'll add my own later
+            continue;
+        }
+        if (strcmp(header, "Proxy-Connection") == 0)
+        {
+            //throw away, I'll add my own later
+            continue;
+        }
+        if (strcmp(header, "User-Agent") == 0)
+        {
+            //throw away, I'll add my own later
+            continue;
+        }
+        if (strcmp(header, "Host") == 0)
+        {
+            hasHostHeader = 1;
+        }
+
+        colon[0] = ':';
+        strcat(myRequest, header);
+        strcat(myRequest, "\r\n");
+    }
+    if (!hasHostHeader)
+    {
+        strcat(myRequest, host);
+        strcat(myRequest, "\r\n");
+    }
+    // headers required by the lab
+    strcat(myRequest, "User-Agent: ");
+    strcat(myRequest, user_agent_hdr);
+    strcat(myRequest, "Connection: close");
+    strcat(myRequest, "\r\n");
+    strcat(myRequest, "Proxy-Connection: close");
+    strcat(myRequest, "\r\n");
+
+    strcat(myRequest, "\r\n");
+    printf("myRequest:\n%s\n", myRequest);
 
     // // Provided client code
     // char *host;
