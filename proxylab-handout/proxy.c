@@ -38,6 +38,17 @@ void read_write(int clientfd)
         nread += read(clientfd, buf + nread, MAX_OBJECT_SIZE);
     }
 
+    /* LOGGING */
+    char buf_copy[MAX_OBJECT_SIZE];
+    strcpy(buf_copy, buf);
+    strtok(buf_copy, " "); // throw away REST type, ex. GET
+    char *temp = strtok(NULL, " ");
+    char *logMe = malloc(strlen(temp) + 1);
+    strcpy(logMe, temp);
+    // printf("url: %s\n", logMe);
+    logbuf_insert(&logbuf, logMe);
+    /* END LOGGING */
+
     //begin parsing
     char *req_type = strtok(buf, " ");
     if (strcmp(req_type, "GET") != 0)
@@ -52,11 +63,7 @@ void read_write(int clientfd)
         // TODO: discard request
     }
     char *host = strtok(NULL, "/");
-    /*log the url*/
-    char *logMe = malloc(strlen(host) + 1);
-    strcpy(logMe, host);
-    logbuf_insert(&logbuf, host);
-    /*end log*/
+    // printf("host: %s\n", host);
     if (strlen(host) == 0)
     {
         fprintf(stderr, "bad host: %s\n", host);
@@ -228,7 +235,7 @@ void *logging_thread(void *vargp)
         time_t t = time(NULL);
         fprintf(logfile, "%ld: %s\n", t, url);
         fflush(logfile);
-        // free(url);
+        free(url);
     }
 }
 
