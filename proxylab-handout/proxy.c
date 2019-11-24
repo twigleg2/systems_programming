@@ -21,7 +21,8 @@ void *read_write(void *sfd)
     int sfd2 = *((int *)sfd);
     pthread_detach(pthread_self());
 
-    char buf[MAX_OBJECT_SIZE];
+    char buf[MAX_OBJECT_SIZE] = {0};
+    memset(buf, 0, MAX_OBJECT_SIZE);
     ssize_t nread = 0;
     while (!strstr(buf, "\r\n\r\n"))
     {
@@ -182,7 +183,7 @@ void *read_write(void *sfd)
         totalbytesRead += bytesRead;
     } while (bytesRead != 0);
 
-    printf("content: %s\n", content);
+    // printf("content: %s\n", content);
 
     int contentLen = totalbytesRead; //TODO: can't use strlen on binary data
     bytesWritten = 0;
@@ -199,6 +200,7 @@ void *read_write(void *sfd)
     }
     close(sfd3);
     close(sfd2);
+    free(sfd);
     return NULL;
 }
 
@@ -240,11 +242,11 @@ int main(int argc, char *argv[])
         // my server code
         struct sockaddr_storage peer_addr;
         socklen_t peer_addr_len;
-        int sfd2 = accept(sfd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        int *sfd2 = malloc(sizeof(int));
+        *sfd2 = accept(sfd, (struct sockaddr *)&peer_addr, &peer_addr_len);
 
         pthread_t threadId;
-        pthread_create(&threadId, NULL, read_write, &sfd2);
-        // read_write(sfd2);
+        pthread_create(&threadId, NULL, read_write, sfd2);
     }
     //END LOOP
 
