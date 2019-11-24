@@ -7,26 +7,111 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 
+#define NTHREADS 16
+
+#define SBUFSIZE 32
+
+/*sbuf*/
+
+/* $begin sbuft */
+typedef struct
+{
+    int *buf;    /* Buffer array */
+    int n;       /* Maximum number of slots */
+    int front;   /* buf[(front+1)%n] is first item */
+    int rear;    /* buf[rear%n] is last item */
+    sem_t mutex; /* Protects accesses to buf */
+    sem_t slots; /* Counts available slots */
+    sem_t items; /* Counts available items */
+} sbuf_t;
+/* $end sbuft */
+sbuf_t sbuf;
+
+/* Create an empty, bounded, shared FIFO buffer with n slots */
+/* $begin sbuf_init */
+void sbuf_init(sbuf_t *sp, int n)
+{
+    sp->buf = calloc(n, sizeof(int));
+    sp->n = n;                  /* Buffer holds max of n items */
+    sp->front = sp->rear = 0;   /* Empty buffer iff front == rear */
+    sem_init(&sp->mutex, 0, 1); /* Binary semaphore for locking */
+    sem_init(&sp->slots, 0, n); /* Initially, buf has n empty slots */
+    sem_init(&sp->items, 0, 0); /* Initially, buf has zero data items */
+}
+/* $end sbuf_init */
+
+/* Clean up buffer sp */
+/* $begin sbuf_deinit */
+void sbuf_deinit(sbuf_t *sp)
+{
+    free(sp->buf);
+}
+/* $end sbuf_deinit */
+
+/* Insert item onto the rear of shared buffer sp */
+/* $begin sbuf_insert */
+void sbuf_insert(sbuf_t *sp, int item)
+{
+    sem_wait(&sp->slots);                   /* Wait for available slot */
+    sem_wait(&sp->mutex);                   /* Lock the buffer */
+    sp->buf[(++sp->rear) % (sp->n)] = item; /* Insert the item */
+    sem_post(&sp->mutex);                   /* Unlock the buffer */
+    sem_post(&sp->items);                   /* Announce available item */
+}
+/* $end sbuf_insert */
+
+/* Remove and return the first item from buffer sp */
+/* $begin sbuf_remove */
+int sbuf_remove(sbuf_t *sp)
+{
+    int item;
+    sem_wait(&sp->items);                    /* Wait for available item */
+    sem_wait(&sp->mutex);                    /* Lock the buffer */
+    item = sp->buf[(++sp->front) % (sp->n)]; /* Remove the item */
+    sem_post(&sp->mutex);                    /* Unlock the buffer */
+    sem_post(&sp->slots);                    /* Announce available slot */
+    return item;
+}
+/* $end sbuf_remove */
+/* $end sbufc */
+
+/*end sbuf*/
+
+struct cache_object
+{
+    int data_size;
+    char *url;
+    char *data;
+    struct cache_object *next_object;
+};
+typedef struct cache_object *cache_start;
+typedef struct cache_object *cache_end;
+
+typedef struct
+{
+    sem_t wait_for_connection_sem;
+    sem_t log_access_sem;
+    sem_t cache_access_sem;
+} thread_parameters;
+
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr =
     "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 
-void *read_write(void *sfd)
+void read_write(int clientfd)
 {
-    int sfd2 = *((int *)sfd);
-    pthread_detach(pthread_self());
 
-    char buf[MAX_OBJECT_SIZE] = {0};
-    memset(buf, 0, MAX_OBJECT_SIZE);
+    char buf[MAX_OBJECT_SIZE];
     ssize_t nread = 0;
     while (!strstr(buf, "\r\n\r\n"))
     {
-        nread += read(sfd2, buf + nread, MAX_OBJECT_SIZE);
+        nread += read(clientfd, buf + nread, MAX_OBJECT_SIZE);
     }
 
     //begin parsing
@@ -126,7 +211,7 @@ void *read_write(void *sfd)
     struct addrinfo hints;
     struct addrinfo *result;
     struct addrinfo *rp;
-    int sfd3;
+    int hostfd;
     /* Obtain address(es) matching host/port */
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_family = AF_UNSPEC;     /* Allow IPv4 or IPv6 */
@@ -146,13 +231,13 @@ void *read_write(void *sfd)
     and) try the next address. */
     for (rp = result; rp != NULL; rp = rp->ai_next)
     {
-        sfd3 = socket(rp->ai_family, rp->ai_socktype,
-                      rp->ai_protocol);
-        if (sfd3 == -1)
+        hostfd = socket(rp->ai_family, rp->ai_socktype,
+                        rp->ai_protocol);
+        if (hostfd == -1)
             continue;
-        if (connect(sfd3, rp->ai_addr, rp->ai_addrlen) != -1)
+        if (connect(hostfd, rp->ai_addr, rp->ai_addrlen) != -1)
             break; /* Success */
-        close(sfd3);
+        close(hostfd);
     }
     if (rp == NULL)
     { /* No address succeeded */
@@ -165,7 +250,7 @@ void *read_write(void *sfd)
     int bytesWritten = 0;
     while (bytesWritten != myRequestLen)
     {
-        int checkErr = write(sfd3, myRequest + bytesWritten, myRequestLen - bytesWritten);
+        int checkErr = write(hostfd, myRequest + bytesWritten, myRequestLen - bytesWritten);
         if (checkErr == -1)
         {
             fprintf(stderr, "write error");
@@ -179,17 +264,17 @@ void *read_write(void *sfd)
     int bytesRead = 0;
     do
     {
-        bytesRead = read(sfd3, content + totalbytesRead, MAX_OBJECT_SIZE);
+        bytesRead = read(hostfd, content + totalbytesRead, MAX_OBJECT_SIZE);
         totalbytesRead += bytesRead;
     } while (bytesRead != 0);
 
-    // printf("content: %s\n", content);
+    printf("content: %s\n", content);
 
     int contentLen = totalbytesRead; //TODO: can't use strlen on binary data
     bytesWritten = 0;
     while (bytesWritten != contentLen)
     {
-        int checkErr = write(sfd2, content + bytesWritten, contentLen - bytesWritten);
+        int checkErr = write(clientfd, content + bytesWritten, contentLen - bytesWritten);
         if (checkErr == -1)
         {
             fprintf(stderr, "write error");
@@ -198,10 +283,20 @@ void *read_write(void *sfd)
         bytesWritten += checkErr;
         printf("bytesWritten: %d  contentLen: %d\n", bytesWritten, contentLen);
     }
-    close(sfd3);
-    close(sfd2);
-    free(sfd);
-    return NULL;
+    close(hostfd);
+    close(clientfd);
+    return;
+}
+
+void *thread(void *vargp)
+{
+    pthread_detach(pthread_self());
+    while (1)
+    {
+        int clientfd = sbuf_remove(&sbuf); /* Remove clientfd from buffer */
+        read_write(clientfd);              /* Service client */
+        // close(clientfd); //done in another place
+    }
 }
 
 // main
@@ -218,37 +313,40 @@ int main(int argc, char *argv[])
     ip4addr.sin_family = AF_INET;
     ip4addr.sin_port = htons(atoi(argv[1]));
     ip4addr.sin_addr.s_addr = INADDR_ANY;
-    int sfd;
-    if ((sfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    int listenfd;
+    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
         perror("socket error");
         exit(EXIT_FAILURE);
     }
-    if (bind(sfd, (struct sockaddr *)&ip4addr, sizeof(struct sockaddr_in)) < 0)
+    if (bind(listenfd, (struct sockaddr *)&ip4addr, sizeof(struct sockaddr_in)) < 0)
     {
-        close(sfd);
+        close(listenfd);
         perror("bind error");
         exit(EXIT_FAILURE);
     }
-    if (listen(sfd, 100) < 0)
+    if (listen(listenfd, 100) < 0)
     {
-        close(sfd);
+        close(listenfd);
         perror("listen error");
         exit(EXIT_FAILURE);
     }
-    //LOOP
+
+    /* Create worker threads */
+    for (int i = 0; i < NTHREADS; i++)
+    {
+        pthread_t threadId;
+        pthread_create(&threadId, NULL, thread, NULL);
+    }
+    sbuf_init(&sbuf, SBUFSIZE);
     while (1)
     {
         // my server code
         struct sockaddr_storage peer_addr;
         socklen_t peer_addr_len;
-        int *sfd2 = malloc(sizeof(int));
-        *sfd2 = accept(sfd, (struct sockaddr *)&peer_addr, &peer_addr_len);
-
-        pthread_t threadId;
-        pthread_create(&threadId, NULL, read_write, sfd2);
+        int clientfd = accept(listenfd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        sbuf_insert(&sbuf, clientfd); /* Insert clientfd in buffer */
     }
-    //END LOOP
 
     // printf("%s", user_agent_hdr);
     return 0;

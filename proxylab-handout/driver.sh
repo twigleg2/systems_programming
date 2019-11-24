@@ -342,9 +342,7 @@ do
     fi
 done
 
-# make sure all log messages were written out by logger thread
 sleep 2
-
 echo "Killing tiny and proxy"
 kill $tiny_pid 2> /dev/null
 wait $tiny_pid 2> /dev/null
@@ -614,8 +612,8 @@ wait $proxy_pid 2> /dev/null
 echo "cacheScore: $cacheScore/${MAX_CACHE}"
 
 # Emit the total score
-totalScore=`expr ${basicScore} + ${logScore} + ${cleanupScore} + ${memmgmtScore} + ${cacheScore} + ${concurrencyScore}`
-maxScore=`expr ${MAX_BASIC} + ${MAX_LOG} + ${MAX_CLEANUP} + ${MAX_MEM_MGMT} + ${MAX_CACHE} + ${MAX_CONCURRENCY}`
+totalScore=`expr ${basicScore} + ${logScore} + ${cleanupScore} + ${cacheScore} + ${concurrencyScore} + ${memmgmtScore}`
+maxScore=`expr ${MAX_BASIC} + ${MAX_LOG} + ${MAX_CLEANUP} + ${MAX_CACHE} + ${MAX_CONCURRENCY} + ${MAX_MEM_MGMT}`
 echo ""
 echo "totalScore: ${totalScore}/${maxScore}"
 
