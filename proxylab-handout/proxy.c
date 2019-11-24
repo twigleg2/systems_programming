@@ -9,104 +9,27 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-/* Recommended max cache and object sizes */
+#include "sbuf.h"
+#include "logbuf.h"
+
+// Recommended max cache and object sizes
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 
 #define NTHREADS 16
 
 #define SBUFSIZE 32
+#define LOGBUFSIZE 64
 
-/*sbuf*/
+sbuf_t sbuf;     // shared buffer to hold the client connection file descriptors
+logbuf_t logbuf; // shared buffer to hold the URLs that will be put into the log file
 
-/* $begin sbuft */
-typedef struct
-{
-    int *buf;    /* Buffer array */
-    int n;       /* Maximum number of slots */
-    int front;   /* buf[(front+1)%n] is first item */
-    int rear;    /* buf[rear%n] is last item */
-    sem_t mutex; /* Protects accesses to buf */
-    sem_t slots; /* Counts available slots */
-    sem_t items; /* Counts available items */
-} sbuf_t;
-/* $end sbuft */
-sbuf_t sbuf;
-
-/* Create an empty, bounded, shared FIFO buffer with n slots */
-/* $begin sbuf_init */
-void sbuf_init(sbuf_t *sp, int n)
-{
-    sp->buf = calloc(n, sizeof(int));
-    sp->n = n;                  /* Buffer holds max of n items */
-    sp->front = sp->rear = 0;   /* Empty buffer iff front == rear */
-    sem_init(&sp->mutex, 0, 1); /* Binary semaphore for locking */
-    sem_init(&sp->slots, 0, n); /* Initially, buf has n empty slots */
-    sem_init(&sp->items, 0, 0); /* Initially, buf has zero data items */
-}
-/* $end sbuf_init */
-
-/* Clean up buffer sp */
-/* $begin sbuf_deinit */
-void sbuf_deinit(sbuf_t *sp)
-{
-    free(sp->buf);
-}
-/* $end sbuf_deinit */
-
-/* Insert item onto the rear of shared buffer sp */
-/* $begin sbuf_insert */
-void sbuf_insert(sbuf_t *sp, int item)
-{
-    sem_wait(&sp->slots);                   /* Wait for available slot */
-    sem_wait(&sp->mutex);                   /* Lock the buffer */
-    sp->buf[(++sp->rear) % (sp->n)] = item; /* Insert the item */
-    sem_post(&sp->mutex);                   /* Unlock the buffer */
-    sem_post(&sp->items);                   /* Announce available item */
-}
-/* $end sbuf_insert */
-
-/* Remove and return the first item from buffer sp */
-/* $begin sbuf_remove */
-int sbuf_remove(sbuf_t *sp)
-{
-    int item;
-    sem_wait(&sp->items);                    /* Wait for available item */
-    sem_wait(&sp->mutex);                    /* Lock the buffer */
-    item = sp->buf[(++sp->front) % (sp->n)]; /* Remove the item */
-    sem_post(&sp->mutex);                    /* Unlock the buffer */
-    sem_post(&sp->slots);                    /* Announce available slot */
-    return item;
-}
-/* $end sbuf_remove */
-/* $end sbufc */
-
-/*end sbuf*/
-
-struct cache_object
-{
-    int data_size;
-    char *url;
-    char *data;
-    struct cache_object *next_object;
-};
-typedef struct cache_object *cache_start;
-typedef struct cache_object *cache_end;
-
-typedef struct
-{
-    sem_t wait_for_connection_sem;
-    sem_t log_access_sem;
-    sem_t cache_access_sem;
-} thread_parameters;
-
-/* You won't lose style points for including this long line in your code */
+// You won't lose style points for including this long line in your code
 static const char *user_agent_hdr =
     "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 
 void read_write(int clientfd)
 {
-
     char buf[MAX_OBJECT_SIZE];
     ssize_t nread = 0;
     while (!strstr(buf, "\r\n\r\n"))
@@ -153,7 +76,7 @@ void read_write(int clientfd)
     printf("path: %s\n\n", path);
     // TODO: verify that HTTP/1.1 was sent, else invalid request
 
-    // begin putting together my request
+    /* begin putting together my request*/
     char myRequest[MAX_OBJECT_SIZE] = "";
     strcat(myRequest, req_type);
     strcat(myRequest, " /"); //path is missing the beggining slash, so adding it here.
@@ -206,6 +129,7 @@ void read_write(int clientfd)
 
     strcat(myRequest, "\r\n");
     printf("myRequest:\n%s\n", myRequest);
+    /*done building my request */
 
     // Provided client code
     struct addrinfo hints;
@@ -288,7 +212,7 @@ void read_write(int clientfd)
     return;
 }
 
-void *thread(void *vargp)
+void *proxy_thread(void *vargp)
 {
     pthread_detach(pthread_self());
     while (1)
@@ -308,7 +232,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Provided server code
+    /* Provided server code */
     struct sockaddr_in ip4addr;
     ip4addr.sin_family = AF_INET;
     ip4addr.sin_port = htons(atoi(argv[1]));
@@ -331,13 +255,15 @@ int main(int argc, char *argv[])
         perror("listen error");
         exit(EXIT_FAILURE);
     }
+    /**/
 
-    /* Create worker threads */
+    // Create worker threads
     for (int i = 0; i < NTHREADS; i++)
     {
         pthread_t threadId;
-        pthread_create(&threadId, NULL, thread, NULL);
+        pthread_create(&threadId, NULL, proxy_thread, NULL);
     }
+
     sbuf_init(&sbuf, SBUFSIZE);
     while (1)
     {
@@ -345,7 +271,7 @@ int main(int argc, char *argv[])
         struct sockaddr_storage peer_addr;
         socklen_t peer_addr_len;
         int clientfd = accept(listenfd, (struct sockaddr *)&peer_addr, &peer_addr_len);
-        sbuf_insert(&sbuf, clientfd); /* Insert clientfd in buffer */
+        sbuf_insert(&sbuf, clientfd); // Insert clientfd in buffer
     }
 
     // printf("%s", user_agent_hdr);
