@@ -8,6 +8,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <time.h>
 
 #include "sbuf.h"
 #include "logbuf.h"
@@ -41,19 +42,24 @@ void read_write(int clientfd)
     char *req_type = strtok(buf, " ");
     if (strcmp(req_type, "GET") != 0)
     {
-        printf("Bad req_type: %s\n", req_type);
+        fprintf(stderr, "Bad req_type: %s\n", req_type);
         // TODO: discard request
     }
     char *http = strtok(NULL, "//");
     if (strcmp(http, "http:") != 0)
     {
-        printf("bad http: %s\n", http);
+        fprintf(stderr, "bad http: %s\n", http);
         // TODO: discard request
     }
     char *host = strtok(NULL, "/");
+    /*log the url*/
+    char *logMe = malloc(strlen(host) + 1);
+    strcpy(logMe, host);
+    logbuf_insert(&logbuf, host);
+    /*end log*/
     if (strlen(host) == 0)
     {
-        printf("bad host: %s\n", host);
+        fprintf(stderr, "bad host: %s\n", host);
         // TODO: discard request
     }
     // find if contains port
@@ -64,16 +70,16 @@ void read_write(int clientfd)
         port = colonPos + 1; //set port to point to one char after colon
         colonPos[0] = '\0';  //change colon to null char
     }
-    printf("host: %s, port: %s\n", host, port);
+    // printf("host: %s, port: %s\n", host, port);
     char *path = strtok(NULL, "\r\n"); //path contains the rest of the first line, including HTTP/1.1
     char *pathEnd = strchr(path, ' '); //find the first space, which is the real end of the path.
     pathEnd[0] = '\0';
     if (path == NULL)
     {
-        printf("bad request, not HTTP/1.1");
+        fprintf(stderr, "bad request, not HTTP/1.1");
         // TODO discard request;
     }
-    printf("path: %s\n\n", path);
+    // printf("path: %s\n\n", path);
     // TODO: verify that HTTP/1.1 was sent, else invalid request
 
     /* begin putting together my request*/
@@ -128,7 +134,7 @@ void read_write(int clientfd)
     strcat(myRequest, "\r\n");
 
     strcat(myRequest, "\r\n");
-    printf("myRequest:\n%s\n", myRequest);
+    // printf("myRequest:\n%s\n", myRequest);
     /*done building my request */
 
     // Provided client code
@@ -192,7 +198,7 @@ void read_write(int clientfd)
         totalbytesRead += bytesRead;
     } while (bytesRead != 0);
 
-    printf("content: %s\n", content);
+    // printf("content: %s\n", content);
 
     int contentLen = totalbytesRead; //TODO: can't use strlen on binary data
     bytesWritten = 0;
@@ -210,6 +216,20 @@ void read_write(int clientfd)
     close(hostfd);
     close(clientfd);
     return;
+}
+
+void *logging_thread(void *vargp)
+{
+    pthread_detach(pthread_self());
+    FILE *logfile = fopen("log.txt", "a");
+    while (1)
+    {
+        char *url = logbuf_remove(&logbuf);
+        time_t t = time(NULL);
+        fprintf(logfile, "%ld: %s\n", t, url);
+        fflush(logfile);
+        // free(url);
+    }
 }
 
 void *proxy_thread(void *vargp)
@@ -257,14 +277,20 @@ int main(int argc, char *argv[])
     }
     /**/
 
-    // Create worker threads
+    // Create threads
+    pthread_t threadId;
+
+    // Create logging thread
+    logbuf_init(&logbuf, LOGBUFSIZE);
+    pthread_create(&threadId, NULL, logging_thread, NULL);
+
+    // Create proxy threads
+    sbuf_init(&sbuf, SBUFSIZE);
     for (int i = 0; i < NTHREADS; i++)
     {
-        pthread_t threadId;
         pthread_create(&threadId, NULL, proxy_thread, NULL);
     }
 
-    sbuf_init(&sbuf, SBUFSIZE);
     while (1)
     {
         // my server code
@@ -274,6 +300,5 @@ int main(int argc, char *argv[])
         sbuf_insert(&sbuf, clientfd); // Insert clientfd in buffer
     }
 
-    // printf("%s", user_agent_hdr);
     return 0;
 }
