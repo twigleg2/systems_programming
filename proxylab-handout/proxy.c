@@ -12,6 +12,7 @@
 
 #include "sbuf.h"
 #include "logbuf.h"
+#include "cache.h"
 
 // Recommended max cache and object sizes
 #define MAX_CACHE_SIZE 1049000
@@ -24,30 +25,25 @@
 
 sbuf_t sbuf;     // shared buffer to hold the client connection file descriptors
 logbuf_t logbuf; // shared buffer to hold the URLs that will be put into the log file
+cache_t cache;   // the cache
+
+typedef struct{
+    char *host;
+    char *port;
+    char *request;
+    char* url;
+} req_info_t;
+
+typedef struct {
+    int size;
+    char *content;
+} req_content_t;
 
 // You won't lose style points for including this long line in your code
 static const char *user_agent_hdr =
     "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 
-void read_write(int clientfd)
-{
-    char buf[MAX_OBJECT_SIZE];
-    ssize_t nread = 0;
-    while (!strstr(buf, "\r\n\r\n"))
-    {
-        nread += read(clientfd, buf + nread, MAX_OBJECT_SIZE);
-    }
-
-    /* LOGGING */
-    char buf_copy[MAX_OBJECT_SIZE];
-    strcpy(buf_copy, buf);
-    strtok(buf_copy, " "); // throw away REST type, ex. GET
-    char *temp = strtok(NULL, " ");
-    char *logMe = malloc(strlen(temp) + 1);
-    strcpy(logMe, temp);
-    // printf("url: %s\n", logMe);
-    logbuf_insert(&logbuf, logMe);
-    /* END LOGGING */
+req_info_t parse_request(char* buf) {
 
     //begin parsing
     char *req_type = strtok(buf, " ");
@@ -144,7 +140,18 @@ void read_write(int clientfd)
     // printf("myRequest:\n%s\n", myRequest);
     /*done building my request */
 
-    // Provided client code
+    req_info_t req_info;
+    req_info.host = malloc(strlen(host) + 1);
+    strcpy(req_info.host, host);
+    req_info.port = malloc(strlen(port) + 1);
+    strcpy(req_info.port, port);
+    req_info.request = malloc(strlen(myRequest) + 1);
+    strcpy(req_info.request, myRequest);
+    return req_info;
+}
+
+cache_object_t contact_host(req_info_t req_info) {
+// Provided client code
     struct addrinfo hints;
     struct addrinfo *result;
     struct addrinfo *rp;
@@ -156,7 +163,7 @@ void read_write(int clientfd)
     hints.ai_flags = 0;
     hints.ai_protocol = 0; /* Any protocol */
     //host and port come from the original http GET request
-    int s = getaddrinfo(host, port ? port : "80", &hints, &result);
+    int s = getaddrinfo(req_info.host, req_info.port ? req_info.port : "80", &hints, &result);
     if (s != 0)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
@@ -183,11 +190,11 @@ void read_write(int clientfd)
     freeaddrinfo(result); /* No longer needed */
 
     //write
-    int myRequestLen = strlen(myRequest);
+    int myRequestLen = strlen(req_info.request);
     int bytesWritten = 0;
     while (bytesWritten != myRequestLen)
     {
-        int checkErr = write(hostfd, myRequest + bytesWritten, myRequestLen - bytesWritten);
+        int checkErr = write(hostfd, req_info.request + bytesWritten, myRequestLen - bytesWritten);
         if (checkErr == -1)
         {
             fprintf(stderr, "write error");
@@ -196,7 +203,8 @@ void read_write(int clientfd)
         bytesWritten += checkErr;
     }
 
-    char content[MAX_OBJECT_SIZE];
+    char *content = malloc(MAX_OBJECT_SIZE); // TODO: Free this when?
+    memset(content, 0, MAX_OBJECT_SIZE);
     int totalbytesRead = 0;
     int bytesRead = 0;
     do
@@ -204,14 +212,52 @@ void read_write(int clientfd)
         bytesRead = read(hostfd, content + totalbytesRead, MAX_OBJECT_SIZE);
         totalbytesRead += bytesRead;
     } while (bytesRead != 0);
+    close(hostfd);
 
-    // printf("content: %s\n", content);
+    cache_object_t cache_object = cache_build_object(totalbytesRead, req_info.url, content);
+    cache_insert(&cache, cache_object);
+    return cache_object;
+}
 
-    int contentLen = totalbytesRead; //TODO: can't use strlen on binary data
-    bytesWritten = 0;
+char *logging(char *buf) {
+    char buf_copy[MAX_OBJECT_SIZE];
+    strcpy(buf_copy, buf);
+    strtok(buf_copy, " "); // throw away REST type, ex. GET
+    char *temp = strtok(NULL, " ");
+    char *url = malloc(strlen(temp) + 1);
+    strcpy(url, temp);
+    logbuf_insert(&logbuf, url);
+    return url;
+}
+
+void read_write(int clientfd)
+{
+    char *buf = malloc(MAX_OBJECT_SIZE);
+    memset(buf, 0, MAX_OBJECT_SIZE);
+    ssize_t nread = 0;
+    while (!strstr(buf, "\r\n\r\n"))
+    {
+        nread += read(clientfd, buf + nread, MAX_OBJECT_SIZE);
+    }
+
+    char *url = logging(buf);
+
+    cache_object_t *cache_object = cache_find_object(&cache, url);
+    if(cache_object == NULL){
+        req_info_t req_info = parse_request(buf); // use malloc to pass string?
+        req_info.url = url;
+        *cache_object = contact_host(req_info);  // TODO: free content when done ONLY IF not stored in cache
+        free(req_info.host);
+        free(req_info.port);
+        free(req_info.request);
+    }
+    
+
+    int contentLen = cache_object->size;
+    int bytesWritten = 0;
     while (bytesWritten != contentLen)
     {
-        int checkErr = write(clientfd, content + bytesWritten, contentLen - bytesWritten);
+        int checkErr = write(clientfd, cache_object->content + bytesWritten, contentLen - bytesWritten);
         if (checkErr == -1)
         {
             fprintf(stderr, "write error");
@@ -220,7 +266,6 @@ void read_write(int clientfd)
         bytesWritten += checkErr;
         printf("bytesWritten: %d  contentLen: %d\n", bytesWritten, contentLen);
     }
-    close(hostfd);
     close(clientfd);
     return;
 }
@@ -283,6 +328,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     /**/
+    
+    cache_init(&cache, MAX_CACHE_SIZE / 100);  // max number of objects in cache
 
     // Create threads
     pthread_t threadId;
