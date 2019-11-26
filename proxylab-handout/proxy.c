@@ -27,14 +27,15 @@ sbuf_t sbuf;     // shared buffer to hold the client connection file descriptors
 logbuf_t logbuf; // shared buffer to hold the URLs that will be put into the log file
 cache_t cache;   // the cache
 
-typedef struct{
+typedef struct
+{
     char *host;
     char *port;
     char *request;
-    char* url;
 } req_info_t;
 
-typedef struct {
+typedef struct
+{
     int size;
     char *content;
 } req_content_t;
@@ -43,7 +44,8 @@ typedef struct {
 static const char *user_agent_hdr =
     "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 
-req_info_t parse_request(char* buf) {
+req_info_t parse_request(char *buf)
+{
 
     //begin parsing
     char *req_type = strtok(buf, " ");
@@ -143,21 +145,31 @@ req_info_t parse_request(char* buf) {
     req_info_t req_info;
     req_info.host = malloc(strlen(host) + 1);
     strcpy(req_info.host, host);
-    req_info.port = malloc(strlen(port) + 1);
-    strcpy(req_info.port, port);
+    if (port == NULL)
+    {
+        req_info.port = NULL;
+    }
+    else
+    {
+        req_info.port = malloc(strlen(port) + 1);
+        strcpy(req_info.port, port);
+    }
     req_info.request = malloc(strlen(myRequest) + 1);
     strcpy(req_info.request, myRequest);
     return req_info;
 }
 
-cache_object_t contact_host(req_info_t req_info) {
-// Provided client code
+cache_object_t contact_host(req_info_t req_info, char *url)
+{
+    // Provided client code
     struct addrinfo hints;
     struct addrinfo *result;
     struct addrinfo *rp;
     int hostfd;
     /* Obtain address(es) matching host/port */
-    memset(&hints, 0, sizeof(struct addrinfo));
+    printf("size of url: %ld, url: %s\n", strlen(url), url);
+    // memset(&hints, 0, sizeof(struct addrinfo));
+    printf("size of url: %ld, url: %s\n", strlen(url), url);
     hints.ai_family = AF_UNSPEC;     /* Allow IPv4 or IPv6 */
     hints.ai_socktype = SOCK_STREAM; /* TCP socket */
     hints.ai_flags = 0;
@@ -169,6 +181,8 @@ cache_object_t contact_host(req_info_t req_info) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
         exit(EXIT_FAILURE);
     }
+    printf("url: %s\n", url);
+    // Breaks before here
     /* getaddrinfo() returns a list of address structures.
     Try each address until we successfully connect(2).
     If socket(2) (or connect(2)) fails, we (close the socket
@@ -214,12 +228,13 @@ cache_object_t contact_host(req_info_t req_info) {
     } while (bytesRead != 0);
     close(hostfd);
 
-    cache_object_t cache_object = cache_build_object(totalbytesRead, req_info.url, content);
+    cache_object_t cache_object = cache_build_object(totalbytesRead, url, content);
     cache_insert(&cache, cache_object);
     return cache_object;
 }
 
-char *logging(char *buf) {
+char *logging(char *buf)
+{
     char buf_copy[MAX_OBJECT_SIZE];
     strcpy(buf_copy, buf);
     strtok(buf_copy, " "); // throw away REST type, ex. GET
@@ -243,15 +258,14 @@ void read_write(int clientfd)
     char *url = logging(buf);
 
     cache_object_t *cache_object = cache_find_object(&cache, url);
-    if(cache_object == NULL){
-        req_info_t req_info = parse_request(buf); // use malloc to pass string?
-        req_info.url = url;
-        *cache_object = contact_host(req_info);  // TODO: free content when done ONLY IF not stored in cache
-        free(req_info.host);
-        free(req_info.port);
-        free(req_info.request);
+    if (cache_object == NULL)
+    {
+        req_info_t req_info = parse_request(buf);
+        *cache_object = contact_host(req_info, url); // TODO: free content when done ONLY IF not stored in cache
+        // free(req_info.host);
+        // free(req_info.port);
+        // free(req_info.request);
     }
-    
 
     int contentLen = cache_object->size;
     int bytesWritten = 0;
@@ -328,8 +342,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     /**/
-    
-    cache_init(&cache, MAX_CACHE_SIZE / 100);  // max number of objects in cache
+
+    cache_init(&cache, MAX_CACHE_SIZE / 100); // max number of objects in cache
 
     // Create threads
     pthread_t threadId;
