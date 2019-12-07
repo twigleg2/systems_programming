@@ -81,7 +81,7 @@ void logging(char *buf)
     char *url = strtok(NULL, " ");
     time_t t = time(NULL);
     fprintf(logfile, "%ld: %s\n", t, url);
-    // fflush(logfile);
+    fflush(logfile);
 }
 
 // parse req_info->original_req_buf
@@ -185,9 +185,17 @@ void parse(req_info_t *req_info, char *host_url, char *host_port)
     strcat(myRequest, "\r\n");
     // End parsing
 
-    host_url = host;
-    host_port = port;
+    strcpy(host_url, host);
+    if (port == NULL)
+    {
+        host_port = NULL;
+    }
+    else
+    {
+        strcpy(host_port, port);
+    }
     strcpy(req_info->modified_req_buf, myRequest);
+    return;
 }
 
 int connect_to_server(char *host, char *port)
@@ -214,10 +222,10 @@ int connect_to_server(char *host, char *port)
     Try each address until we successfully connect(2).
     If socket(2) (or connect(2)) fails, we (close the socket
     and) try the next address. */
+    // TODO: the spec says I don't need to loop.  My program halts here.
     for (rp = result; rp != NULL; rp = rp->ai_next)
     {
-        hostfd = socket(rp->ai_family, rp->ai_socktype,
-                        rp->ai_protocol);
+        hostfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (hostfd == -1)
             continue;
         if (connect(hostfd, rp->ai_addr, rp->ai_addrlen) != -1)
@@ -230,11 +238,19 @@ int connect_to_server(char *host, char *port)
     }
     freeaddrinfo(result); /* No longer needed */
 
+    // set fd to non-blocking (set flags while keeping existing flags)
+    if (fcntl(hostfd, F_SETFL, fcntl(hostfd, F_GETFL, 0) | O_NONBLOCK) < 0)
+    {
+        fprintf(stderr, "error setting socket option\n");
+        exit(1);
+    }
+
     return hostfd;
 }
 
 void read_client(req_info_t *req_info)
 {
+    printf("read_client\n");
     // char buf[MAX_OBJECT_SIZE];
     // ssize_t nread = 0;
     while (!strstr(req_info->original_req_buf, "\r\n\r\n"))
@@ -262,7 +278,6 @@ void read_client(req_info_t *req_info)
             req_info->client_bytes_read += bytes_read;
         }
     }
-    // while loop exits naturally
 
     char host_url[MAX_OBJECT_SIZE];
     char host_port[MAX_OBJECT_SIZE];
@@ -271,7 +286,9 @@ void read_client(req_info_t *req_info)
 
     parse(req_info, host_url, host_port);
     logging(req_info->original_req_buf);
+    printf("after logging\n");
     req_info->server_fd = connect_to_server(host_url, host_port);
+    printf("fd: %d\n", req_info->server_fd);
 
     struct epoll_event event;
     event.data.fd = req_info->server_fd;
@@ -282,6 +299,7 @@ void read_client(req_info_t *req_info)
         exit(1);
     }
     req_info->state = WRITE_SERVER;
+
     return;
 }
 
